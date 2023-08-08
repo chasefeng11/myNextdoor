@@ -1,0 +1,6 @@
+{
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "/mnt/c/Data_Loc/OneDrive/Chase/IndepProjects/Nextdoor/Public/Prod/Src/DataParser/lib/lib/async-http-client-2.12.3.jar"
+    ]
+}
