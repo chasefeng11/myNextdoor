@@ -1,9 +1,3 @@
-To-Do
-1) Add functionality to be able to run and get full training data
-2) Naive Bayes Classification on Text
-3) 
-
-
 ## Getting Started
 
 Welcome to the VS Code Java world. Here is a guideline to help you get started to write Java code in Visual Studio Code.
