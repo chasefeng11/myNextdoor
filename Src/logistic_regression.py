@@ -109,23 +109,6 @@ class LogisticRegression:
         return 1 / (1 + np.exp(-x))
     
 
-def one_hot_encode(non_binary_values: pd.Series) -> pd.DataFrame:
-    """
-    Convert a series of categorial data points to numerical vectors.
-    """
-
-    vals = non_binary_values.unique()
-    indexes = {val: i for i, val in enumerate(vals)}
-    
-    data = []
-    for index, value in non_binary_values.items():
-        row = [0] * len(vals)
-        row[indexes[value]] = 1
-        data.append(row)
-
-    return pd.DataFrame(data, columns=vals)
-
-
 if __name__ == '__main__':
     SCRIPT_PATH = __file__
     DATA_PATH = SCRIPT_PATH.replace('Src/logistic_regression.py', 'Data/data.json')
@@ -133,20 +116,17 @@ if __name__ == '__main__':
 
     with open(DATA_PATH) as input_fp:
         data = json.load(input_fp)
-        full_df = da.preprocess_historical_dataset(data)
+        full_df = da.preprocess_dataset(data)
 
         # Get input matrix after encoding categorical inputs as row vectors
-        count_df = full_df[['NumReactions', 'NumComments', 'Age']]
-        author_df = one_hot_encode(full_df['Author']).set_index(count_df.index)
-        location_df = one_hot_encode(full_df['Location']).set_index(count_df.index)
-        target_df = pd.concat([count_df, author_df, location_df], axis=1)
+        input_df = da.numerical_factor_matrix(full_df)
 
         # Get boolean labels (0 or 1) of each post
         labels = [int(val) for val in full_df['Interacted'].to_list()]
         labels = np.array(labels)
 
         # Split historical dataset into training and test subsets
-        X_train, X_test, y_train, y_test = train_test_split(target_df.to_numpy(), labels, test_size=0.2)
+        X_train, X_test, y_train, y_test = train_test_split(input_df.to_numpy(), labels, test_size=0.2)
 
         # Train Logistic Regression model with training matrix and labels
         model = LogisticRegression()
@@ -154,7 +134,7 @@ if __name__ == '__main__':
 
         # Print input variables and their corresponding columns
         print("Regression Coefficients...")
-        for col, coeff in zip(target_df.columns, model.coefficients):
+        for col, coeff in zip(input_df.columns, model.coefficients):
             print("{}, {}".format(col, coeff))
 
         # Test Logistic Regression on out-of-sample data

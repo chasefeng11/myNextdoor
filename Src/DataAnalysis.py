@@ -4,6 +4,7 @@ import string
 
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
+from sklearn.feature_extraction.text import CountVectorizer
 
 def summarize_raw_data(data: dict) -> None:
     """
@@ -20,9 +21,9 @@ def summarize_raw_data(data: dict) -> None:
     print("Number of unique authors: {}".format(len(set(authors))))
 
 
-def preprocess_historical_dataset(data: dict) -> pd.DataFrame:
+def preprocess_dataset(data: dict) -> pd.DataFrame:
     """
-    Preprocess dictionary of raw post training data and return a filtered dataframe.
+    Preprocess dictionary of raw post data and return a filtered dataframe.
 
     DataFrame Columns
     -- id: ID of the post 
@@ -30,15 +31,13 @@ def preprocess_historical_dataset(data: dict) -> pd.DataFrame:
     -- Age: Number of days since post's origination (float)
     -- NumReactions: Current number of users who reacted to the post (int)
     -- NumComments: Current number of comments left on the post (int)
-    -- Interacted: Whether or not the subject has reacted/commented on the post (boolean)
+    -- Interacted (optional): Whether or not the subject has reacted/commented on the post (boolean)
     """
 
     df = pd.DataFrame.from_dict({i: data[i] for i in data.keys()}, orient='index')
 
     df['Text'] = df['Text'].apply(preprocess_text)
     df['Age'] = df['Age'].apply(convert_to_days)
-
-    print(df)
 
     return df
 
@@ -114,8 +113,45 @@ def convert_to_days(age: str) -> float:
     return None
 
 
+def one_hot_encode(non_binary_values: pd.Series) -> pd.DataFrame:
+    """
+    Convert a series of categorial data points to numerical vectors.
+    """
+
+    vals = non_binary_values.unique()
+    indexes = {val: i for i, val in enumerate(vals)}
+        
+    data = []
+    for index, value in non_binary_values.items():
+        row = [0] * len(vals)
+        row[indexes[value]] = 1
+        data.append(row)
+
+    return pd.DataFrame(data, columns=vals)
 
 
+def word_frequency_matrix(text_samples: list) -> tuple:
+    """
+    Return frequency matrix of words appearing across a list of text samples along with the corresponding
+    Vectorizer object.
+
+    Example: [I am happy today!, We are happy today!] -> [1 0 1 1 0]
+                                                         [0 1 1 1 1]
+    """
+    vectorizer = CountVectorizer()
+    X = vectorizer.fit_transform(text_samples)
+    return X.toarray(), vectorizer
+
+
+def numerical_factor_matrix(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return input matrix of non-text factors appearing across a list of post samples after encoding categorical
+    factors as vectors. 
+    """
+    count_df = df[['NumReactions', 'NumComments', 'Age']]
+    author_df = one_hot_encode(df['Author']).set_index(count_df.index)
+    location_df = one_hot_encode(df['Location']).set_index(count_df.index)
+    return pd.concat([count_df, author_df, location_df], axis=1)
 
 
     

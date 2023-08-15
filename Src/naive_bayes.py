@@ -152,19 +152,6 @@ class GaussianNaiveBayes:
         Evaluate the Gaussian pdf with the given mean and variance at specified x point.end.
         """
         return 1 / np.sqrt(var * 2 * np.pi) * np.exp(-1 / 2 * ((x - mean) ** 2 / var))
-    
-
-def frequency_matrix(text_samples: list) -> tuple:
-    """
-    Return frequency matrix of words appearing across a list of text samples along with the corresponding Vectorizer object.
-
-    Example: [I am happy today!, We are happy today!] -> [1 0 1 1 0]
-                                                         [0 1 1 1 1]
-    """
-
-    vectorizer = CountVectorizer()
-    X = vectorizer.fit_transform(text_samples)
-    return X.toarray(), vectorizer
 
 
 if __name__ == '__main__':
@@ -174,11 +161,10 @@ if __name__ == '__main__':
 
     with open(DATA_PATH) as input_fp:
         data = json.load(input_fp)
-        full_df = da.preprocess_historical_dataset(data)
+        full_df = da.preprocess_dataset(data)
 
         # Get feature matrix containing frequencies of words in each post
-        text = full_df['Text'].to_list()
-        feature_matrix, vec = frequency_matrix(text)
+        feature_matrix, vec = da.frequency_matrix(full_df['Text'].to_list())
 
         # Get boolean labels (0 or 1) of each post
         labels = [int(val) for val in full_df['Interacted'].to_list()]
