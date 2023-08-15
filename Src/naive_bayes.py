@@ -1,10 +1,12 @@
 import json
+import sys
 import math
 import numpy as np
-import pandas as pd
+import pickle
 
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 import DataAnalysis as da
 
@@ -37,23 +39,25 @@ class GaussianNaiveBayes:
         param y: Boolean truth labels of all samples
         """
 
-        num_features, num_labels = X.shape
+        num_labels, num_features = X.shape
 
         # Compute our prior probability as the number of observed successes over the total number
         # of observations
-        self.prior_probability = X[y == 1] / num_labels
+        self.prior_probability = y.sum() / num_labels
 
         # Compute Gaussian mean and variance parameters for each feature/output pair
-        self.likelihood_means = np.zeroes((2, num_features))
-        self.likelihood_vars = np.zeroes((2, num_features))
+        self.likelihood_means = np.zeros((2, num_features))
+        self.likelihood_vars = np.zeros((2, num_features))
 
+        # Note: To prevent the variance being set to zero for non-existent features, we enlist a small offset
+        smooth = np.vectorize(lambda x: max(x, sys.float_info.epsilon))
         for output in [0, 1]:
             subarr = X[y == output]
             self.likelihood_means[output, :] = np.mean(subarr, axis=0)
-            self.likelihood_vars[output, :] = np.var(subarr, axis=0)
+            self.likelihood_vars[output, :] = smooth(np.var(subarr, axis=0))
 
 
-    def predict(self, X: np.array):
+    def predict(self, X: np.array) -> np.array:
         """
         Use the likelihood & posteriors to generate predictions for a new feature matrix X.
 
@@ -62,19 +66,22 @@ class GaussianNaiveBayes:
         
         # If the posterior probability of true exceeds that of false, predict the post is
         # important
-        predictions = np.array(np.zeroes(X.shape[0]))
+        predictions = np.array(np.zeros(X.shape[0]))
         for i, row in enumerate(X):
             predictions[i] = int(self.calculate_label_probability(row, 1)
                                  >= self.calculate_label_probability(row, 0))
             
         return predictions
-
+    
 
     def test(self, X: np.array, y: np.array):
         """
         Return our trained model's accuracy against a set of labelled data.
+
+        param X: Feature matrix for a set of out-of-sample inputs
+        param y: Boolean truth labels of these out-of-sample inputs
         """
-        
+
         # Compute the model's prediction vector
         y_hat = self.predict(X)
 
@@ -96,6 +103,8 @@ class GaussianNaiveBayes:
         print("Beta Error: {}%".format(round(100 * beta, 2)))
         print("Power: {}%".format(round(100 * (1 - beta), 2)))
 
+        print(classification_report(y, y_hat, target_names=['Non-Important', 'Important']))
+
         return accuracy
 
 
@@ -114,14 +123,33 @@ class GaussianNaiveBayes:
         gaussian_mean = self.likelihood_means[output]
         gaussian_var = self.likelihood_vars[output]
 
+        # Problem: We can have situations where the gaussian_var is exactly 0
+        # In this case, there are words s.t. P(Important | word) = 0/1
         posterior = np.sum(np.log(GaussianNaiveBayes.gaussian_pdf(x, gaussian_mean, gaussian_var))) + prior
         return posterior
-        
+    
+    
+    def get_significant_features(self, vectorizer: CountVectorizer, num_results: int) -> None:
+        """
+        Return a list of ten of the most significant keyword features.
+        Note: Since (finish this note)
+        """
+
+        likelihood_ratios = self.likelihood_means[0, :] / self.likelihood_means[1, :]
+        words = vectorizer.get_feature_names_out()
+
+        ordered_words = [words[i] for i in np.argsort(likelihood_ratios)]
+        return ordered_words[:num_results]
+    
+    @property
+    def prior(self):
+        return self.prior_probability
+    
 
     @staticmethod
     def gaussian_pdf(x: float, mean: float, var: float) -> float:
         """
-        Evaluate the Gaussian pdf with the given mean and variance at specified x point.end=
+        Evaluate the Gaussian pdf with the given mean and variance at specified x point.end.
         """
         return 1 / np.sqrt(var * 2 * np.pi) * np.exp(-1 / 2 * ((x - mean) ** 2 / var))
     
@@ -135,30 +163,44 @@ def frequency_matrix(text_samples: list) -> tuple:
     """
 
     vectorizer = CountVectorizer()
-    return vectorizer.fit_transform(text_samples)
+    X = vectorizer.fit_transform(text_samples)
+    return X.toarray(), vectorizer
 
 
-if '__name__' == '__main__':
+if __name__ == '__main__':
     SCRIPT_PATH = __file__
-    DATA_PATH = SCRIPT_PATH.replace('Src/explore.py', 'Data/data.json')
+    DATA_PATH = SCRIPT_PATH.replace('Src/naive_bayes.py', 'Data/data.json')
+    MODEL_PATH = SCRIPT_PATH.replace('Src/naive_bayes.py', 'Models/naive_bayes.pickle')
 
-    with open(DATA_PATH) as fp:
-        data = json.load(fp)
+    with open(DATA_PATH) as input_fp:
+        data = json.load(input_fp)
         full_df = da.preprocess_historical_dataset(data)
 
         # Get feature matrix containing frequencies of words in each post
-        text = full_df['Text'].values()
-        feature_matrix = frequency_matrix(text)
+        text = full_df['Text'].to_list()
+        feature_matrix, vec = frequency_matrix(text)
 
         # Get boolean labels (0 or 1) of each post
-        labels = [int(val) for val in full_df['Interacted'].values()]
+        labels = [int(val) for val in full_df['Interacted'].to_list()]
         labels = np.array(labels)
+
+        # Split historical dataset into training and test subsets
+        X_train, X_test, y_train, y_test = train_test_split(feature_matrix, labels, test_size=0.2)
 
         # Train NB model with feature_matrix and labels
         model = GaussianNaiveBayes()
-        model.fit(feature_matrix, labels)
+        model.fit(X_train, y_train)
 
-        # Serialize model as pickle objects
+        # Test NB on out-of-sample data
+        model.test(X_test, y_test)
+
+        # Display most informational words for classifier
+        print(model.get_significant_features(vec, 10))
+
+        # Serialize model as pickle object
+        with open(MODEL_PATH, "wb") as output_fp:
+            pickle.dump(model, output_fp) 
+            print("Serialized Gaussian Naive Model as a pickle file in {}".format(MODEL_PATH))
 
         
 
